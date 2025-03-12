@@ -1,0 +1,86 @@
+#! /bin/bash
+
+#PBS -l walltime=24:00:00
+#PBS -l nodes=1:ppn=2
+#PBS -l mem=4g
+
+# ENVIRONMENT
+module load java-jdk/1.8.0_92
+module load picard/2.18.29
+module load gcc/6.2.0
+module load R/3.6.1
+prj=/home/t.cri.biowksp13/wk3/rnaseq
+
+# INPUTS
+sample=HBR_Rep1
+bam=${prj}/alignment/${sample}.sorted.bam
+ref_fa=${prj}/reference/GRCh38.primary_assembly.genome.fa
+ref_flat=${prj}/reference/gencode.v28.primary_assembly.annotation.refFlat
+ref_ribo_intervals=${prj}/reference/gencode.v28.primary_assembly.annotation.ribosome_ranges
+pair_orientation=FR
+strand_specificity=NONE
+
+# OUTPUTS
+outpfx=${prj}/metrics/${sample}.sorted.bam
+val_metrics=${outpfx}.validation_metrics
+gc_bias_metrics=${outpfx}.gc_bias_metrics
+gc_bias_chart=${outpfx}.gc_bias_chart.pdf
+gc_bias_summary=${outpfx}.gc_bias_summary
+alignment_summary=${outpfx}.alignment_summary
+
+# Validate BAM File
+java -Xmx4g -jar ${PICARD} \
+    ValidateSamFile \
+    INPUT=$bam \
+    OUTPUT=$val_metrics \
+    REFERENCE_SEQUENCE=${ref_fa} \
+    MODE=SUMMARY \
+    VALIDATE_INDEX=true \
+    INDEX_VALIDATION_STRINGENCY=EXHAUSTIVE
+
+# GC Bias Metrics
+java -Xmx4g -jar ${PICARD} \
+    CollectGcBiasMetrics \
+    INPUT=$bam \
+    OUTPUT=$gc_bias_metrics \
+    REFERENCE_SEQUENCE=${ref_fa} \
+    CHART_OUTPUT=$gc_bias_chart \
+    SUMMARY_OUTPUT=$gc_bias_summary \
+    IS_BISULFITE_SEQUENCED=false \
+    METRIC_ACCUMULATION_LEVEL=ALL_READS \
+    METRIC_ACCUMULATION_LEVEL=READ_GROUP \
+    ALSO_IGNORE_DUPLICATES=true
+
+#  alignment summary
+java -Xmx4g -jar ${PICARD}\
+    CollectAlignmentSummaryMetrics \
+    INPUT=$bam \
+    OUTPUT=$alignment_summary \
+    REFERENCE_SEQUENCE=${ref_fa} \
+    MAX_INSERT_SIZE=100000 \
+    EXPECTED_PAIR_ORIENTATIONS=${pair_orientation} \
+    IS_BISULFITE_SEQUENCED=false \
+    METRIC_ACCUMULATION_LEVEL=ALL_READS \
+    METRIC_ACCUMULATION_LEVEL=READ_GROUP
+
+# CollectInsertSizeMetrics
+java -jar -Xmx4g ${PICARD} \
+    CollectInsertSizeMetrics \
+    INPUT=$bam \
+    OUTPUT=${bam}.insert_size_metrics \
+    HISTOGRAM_FILE=${bam}.insert_size_metrics_histogram \
+    ASSUME_SORTED=true \
+    METRIC_ACCUMULATION_LEVEL=ALL_READS \
+    METRIC_ACCUMULATION_LEVEL=READ_GROUP
+
+# CollectRnaSeqMetrics
+java -jar -Xmx4g ${PICARD} \
+    CollectRnaSeqMetrics \
+    INPUT=$bam \
+    OUTPUT=${bam}.rna_seq_metrics \
+    REF_FLAT=${ref_flat} \
+    STRAND_SPECIFICITY=${strand_specificity} \
+    RIBOSOMAL_INTERVALS=${ref_ribo_intervals} \
+    METRIC_ACCUMULATION_LEVEL=ALL_READS \
+    METRIC_ACCUMULATION_LEVEL=READ_GROUP \
+    ASSUME_SORTED=true
